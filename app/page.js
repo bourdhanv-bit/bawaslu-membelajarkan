@@ -144,17 +144,27 @@ export default function Dashboard() {
 
 function VideoRow({ rank, video, isAdmin, onChanged }) {
   const refresh = async () => {
-    await fetch(`/api/videos/${video.id}`, {
+    const res = await fetch(`/api/videos/${video.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh: true }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Gagal refresh data. Coba login admin ulang.");
+      return;
+    }
     onChanged();
   };
 
   const hapus = async () => {
     if (!confirm("Hapus video ini?")) return;
-    await fetch(`/api/videos/${video.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/videos/${video.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Gagal menghapus. Coba login admin ulang.");
+      return;
+    }
     onChanged();
   };
 
