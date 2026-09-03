@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 
 // Login sekarang tidak pakai cookie sama sekali — client menyimpan token

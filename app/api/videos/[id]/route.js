@@ -1,67 +1,48 @@
+export const dynamic = "force-dynamic";
+
 import { db } from "@/lib/db";
-import { extractYoutubeId, fetchYoutubeStats } from "@/lib/youtube";
+import { fetchYoutubeStats } from "@/lib/youtube";
 import { isAdminRequest } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-// GET /api/videos?tipe=provinsi|kabkota&sort=skor|views|likes|comments
-// Publik: siapa saja boleh melihat ranking.
-export async function GET(request) {
-  const params = new URL(request.url).searchParams;
-  const tipe = params.get("tipe") || "provinsi";
-  const sort = params.get("sort") || "skor";
+// PATCH /api/videos/:id   { refresh: true }
+// Hanya admin yang boleh refresh data.
+export async function PATCH(request, { params }) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: "Hanya admin yang bisa melakukan ini" }, { status: 403 });
+  }
 
-  const validSort = ["skor", "views", "likes", "comments"];
-  const sortCol = validSort.includes(sort) ? sort : "skor";
+  const { id } = params;
+  const body = await request.json();
 
-  const { rows } = await db.execute({
-    sql: `
-      SELECT
-        v.id, v.youtube_url, v.judul, v.views, v.likes, v.comments,
-        (v.views + v.likes + v.comments) AS skor,
-        e.nama AS nama_entitas
-      FROM videos v
-      JOIN bawaslu_entities e ON e.id = v.entity_id
-      WHERE e.tipe = ?
-      ORDER BY ${sortCol === "skor" ? "skor" : sortCol} DESC
-    `,
-    args: [tipe],
-  });
+  if (body.refresh) {
+    const { rows } = await db.execute({
+      sql: `SELECT youtube_video_id FROM videos WHERE id = ?`,
+      args: [id],
+    });
+    const video = rows[0];
+    if (!video) return NextResponse.json({ error: "Video tidak ditemukan" }, { status: 404 });
 
-  return NextResponse.json({ videos: rows });
+    const stats = await fetchYoutubeStats(video.youtube_video_id);
+    if (!stats) return NextResponse.json({ error: "Gagal ambil data YouTube" }, { status: 502 });
+
+    await db.execute({
+      sql: `UPDATE videos SET judul=?, views=?, likes=?, comments=?, updated_at=? WHERE id=?`,
+      args: [stats.judul, stats.views, stats.likes, stats.comments, new Date().toISOString(), id],
+    });
+
+    return NextResponse.json({ success: true, ...stats });
+  }
+
+  return NextResponse.json({ error: "Tidak ada perubahan yang dikirim" }, { status: 400 });
 }
 
-// POST /api/videos  { entity_id, youtube_url }
-// Hanya admin yang login yang boleh menambah video.
-export async function POST(request) {
+// DELETE /api/videos/:id
+// Hanya admin yang boleh hapus.
+export async function DELETE(request, { params }) {
   if (!isAdminRequest(request)) {
-    return NextResponse.json({ error: "Hanya admin yang bisa menambah video" }, { status: 403 });
+    return NextResponse.json({ error: "Hanya admin yang bisa menghapus" }, { status: 403 });
   }
-
-  const { entity_id, youtube_url } = await request.json();
-
-  if (!entity_id || !youtube_url) {
-    return NextResponse.json({ error: "Pilih nama Bawaslu dan isi link YouTube" }, { status: 400 });
-  }
-
-  const videoId = extractYoutubeId(youtube_url);
-  if (!videoId) {
-    return NextResponse.json({ error: "Link YouTube tidak valid" }, { status: 400 });
-  }
-
-  const stats = await fetchYoutubeStats(videoId);
-  if (!stats) {
-    return NextResponse.json({ error: "Video tidak ditemukan di YouTube" }, { status: 404 });
-  }
-
-  const now = new Date().toISOString();
-
-  await db.execute({
-    sql: `
-      INSERT INTO videos (entity_id, youtube_url, youtube_video_id, judul, views, likes, comments, shares, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    args: [entity_id, youtube_url, videoId, stats.judul, stats.views, stats.likes, stats.comments, 0, now],
-  });
-
-  return NextResponse.json({ success: true, ...stats });
+  await db.execute({ sql: `DELETE FROM videos WHERE id = ?`, args: [params.id] });
+  return NextResponse.json({ success: true });
 }
