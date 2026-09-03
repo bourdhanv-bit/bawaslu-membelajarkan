@@ -220,15 +220,36 @@ function LoginModal({ onClose, onLoggedIn }) {
 }
 
 function AddVideoModal({ tipe, onClose, onSaved }) {
+  const [provinsiList, setProvinsiList] = useState([]);
+  const [provinsiFilter, setProvinsiFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [entities, setEntities] = useState([]);
   const [entityId, setEntityId] = useState("");
   const [url, setUrl] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Ambil daftar provinsi untuk filter (hanya relevan kalau tipe = kabkota)
   useEffect(() => {
-    fetch(`/api/entities?tipe=${tipe}`).then((r) => r.json()).then((d) => setEntities(d.entities || []));
+    if (tipe === "kabkota") {
+      fetch("/api/provinsi-list").then((r) => r.json()).then((d) => setProvinsiList(d.provinsi || []));
+    }
   }, [tipe]);
+
+  // Ambil daftar entitas sesuai filter provinsi + kata kunci pencarian
+  useEffect(() => {
+    const params = new URLSearchParams({ tipe });
+    if (tipe === "kabkota" && provinsiFilter) params.set("provinsi", provinsiFilter);
+    if (search) params.set("q", search);
+
+    // Untuk kabkota, jangan tampilkan daftar sebelum provinsi dipilih (menghindari dropdown 514 opsi)
+    if (tipe === "kabkota" && !provinsiFilter && !search) {
+      setEntities([]);
+      return;
+    }
+
+    fetch(`/api/entities?${params.toString()}`).then((r) => r.json()).then((d) => setEntities(d.entities || []));
+  }, [tipe, provinsiFilter, search]);
 
   const submit = async () => {
     setErr("");
@@ -250,9 +271,31 @@ function AddVideoModal({ tipe, onClose, onSaved }) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Tambah video — {tipe === "provinsi" ? "Bawaslu Provinsi" : "Bawaslu Kab/Kota"}</h3>
 
+        {tipe === "kabkota" && (
+          <>
+            <label>Filter Provinsi</label>
+            <select
+              value={provinsiFilter}
+              onChange={(e) => { setProvinsiFilter(e.target.value); setEntityId(""); }}
+            >
+              <option value="">— Semua Provinsi —</option>
+              {provinsiList.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+
+            <label>Cari nama Kab/Kota</label>
+            <input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setEntityId(""); }}
+              placeholder="ketik nama kabupaten/kota…"
+            />
+          </>
+        )}
+
         <label>Nama Bawaslu</label>
         <select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
-          <option value="">— Pilih —</option>
+          <option value="">
+            {tipe === "kabkota" && entities.length === 0 ? "— Pilih provinsi atau ketik pencarian dulu —" : "— Pilih —"}
+          </option>
           {entities.map((e) => <option key={e.id} value={e.id}>{e.nama}</option>)}
         </select>
 

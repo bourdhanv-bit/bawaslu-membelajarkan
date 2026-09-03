@@ -17,10 +17,36 @@ const PROVINSI = [
   "Papua", "Papua Barat", "Papua Selatan", "Papua Tengah", "Papua Pegunungan", "Papua Barat Daya",
 ];
 
+const WILAYAH_API = "https://emsifa.github.io/api-wilayah-indonesia/api";
+
+function toTitleCase(str) {
+  return str
+    .toLowerCase()
+    .split(" ")
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+function toBawasluName(rawName) {
+  const isKota = rawName.startsWith("KOTA ");
+  const isKab = rawName.startsWith("KABUPATEN ");
+  const jenis = isKota ? "Kota" : isKab ? "Kabupaten" : "";
+  const sisa = rawName.replace(/^KABUPATEN |^KOTA /, "");
+  return `Bawaslu ${jenis} ${toTitleCase(sisa)}`.trim();
+}
+
 async function main() {
   const schema = fs.readFileSync(new URL("../lib/schema.sql", import.meta.url), "utf-8");
   for (const stmt of schema.split(";").map((s) => s.trim()).filter(Boolean)) {
     await db.execute(stmt);
+  }
+
+  // Migrasi: tambah kolom provinsi_nama kalau database sudah pernah di-seed sebelum kolom ini ada.
+  try {
+    await db.execute(`ALTER TABLE bawaslu_entities ADD COLUMN provinsi_nama TEXT`);
+    console.log("Migrasi: kolom provinsi_nama ditambahkan.");
+  } catch (e) {
+    // Kolom sudah ada — aman diabaikan.
   }
 
   for (const nama of PROVINSI) {
@@ -29,9 +55,31 @@ async function main() {
       args: ["provinsi", `Bawaslu Provinsi ${nama}`],
     });
   }
-
   console.log(`Seed selesai: ${PROVINSI.length} Bawaslu Provinsi ditambahkan.`);
-  console.log(`Untuk 514 Bawaslu Kab/Kota, gunakan fitur import CSV di halaman dashboard (tab Kelola Data).`);
+
+  const provRes = await fetch(`${WILAYAH_API}/provinces.json`);
+  const provinces = await provRes.json();
+
+  let totalKabKota = 0;
+
+  for (const prov of provinces) {
+    const namaProvinsi = toTitleCase(prov.name);
+    const res = await fetch(`${WILAYAH_API}/regencies/${prov.id}.json`);
+    const regencies = await res.json();
+
+    for (const r of regencies) {
+      const nama = toBawasluName(r.name);
+      await db.execute({
+        sql: `INSERT INTO bawaslu_entities (tipe, nama, provinsi_nama) VALUES (?, ?, ?)
+              ON CONFLICT(nama) DO UPDATE SET provinsi_nama = excluded.provinsi_nama`,
+        args: ["kabkota", nama, namaProvinsi],
+      });
+      totalKabKota++;
+    }
+    console.log(`  ${prov.name}: ${regencies.length} kab/kota`);
+  }
+
+  console.log(`Seed selesai: ${totalKabKota} Bawaslu Kabupaten/Kota ditambahkan.`);
 }
 
 main().catch((err) => {
