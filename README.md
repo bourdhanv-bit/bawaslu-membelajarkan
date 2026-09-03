@@ -63,10 +63,16 @@ cp .env.example .env.local
 npm run seed
 ```
 
-Perintah `seed` otomatis membuat tabel dan mengisi 38 nama Bawaslu Provinsi.
-Untuk 514 Bawaslu Kabupaten/Kota, gunakan tombol **"Import daftar Bawaslu"**
-di halaman dashboard (tempel daftar nama resmi, satu per baris) — supaya
-kamu bisa pakai sumber data yang sudah pasti akurat.
+Perintah `seed` otomatis membuat tabel, mengisi 38 nama Bawaslu Provinsi, dan
+menarik data resmi 514 kabupaten/kota se-Indonesia dari API wilayah publik
+([emsifa/api-wilayah-indonesia](https://github.com/emsifa/api-wilayah-indonesia))
+untuk dibuatkan otomatis sebagai "Bawaslu Kabupaten/Kota [nama]". Proses ini
+perlu koneksi internet dan makan waktu beberapa menit karena mengambil data
+per provinsi satu per satu.
+
+Kalau ada nama yang perlu dikoreksi manual (misalnya penamaan khusus di
+daerahmu), tombol **"Import daftar Bawaslu"** di dashboard tetap tersedia
+untuk menambah/melengkapi data kapan saja.
 
 Jalankan lokal untuk uji coba:
 ```bash
@@ -89,16 +95,41 @@ git push -u origin main
 
 1. Buka [vercel.com](https://vercel.com) → login dengan akun GitHub kamu
 2. **Add New → Project** → pilih repo yang baru di-push
-3. Vercel otomatis mendeteksi Next.js — sebelum klik Deploy, buka bagian
-   **Environment Variables**, isi 3 variabel dari `.env.example`:
+4. Isi 5 environment variable dari `.env.example`:
    - `TURSO_DATABASE_URL`
    - `TURSO_AUTH_TOKEN`
    - `YOUTUBE_API_KEY`
-4. Klik **Deploy**
+   - `CRON_SECRET` — string acak bebas (mis. hasil `openssl rand -hex 16`), dipakai untuk mengamankan endpoint refresh otomatis
+   - `ADMIN_PASSWORD` — password bebas untuk masuk sebagai admin di dashboard
+5. Klik **Deploy**
+
+## Mode publik vs admin
+
+Yang tampil ke SEMUA pengunjung (tanpa login): kedua tabel ranking (Provinsi
+& Kabupaten/Kota), bisa diurutkan, tapi tidak ada tombol tambah/edit/hapus.
+
+Untuk menambah link video baru, klik **"Login admin"** di pojok kanan atas,
+masukkan password yang sama dengan `ADMIN_PASSWORD`. Setelah login,
+muncul tombol "+ Tambah video", "Import daftar Bawaslu", serta opsi
+refresh/hapus per video. Login tersimpan di cookie selama 30 hari di
+browser itu.
 
 Setelah selesai, dapat URL `https://<nama-project>.vercel.app`. Setiap
 `git push` ke `main` berikutnya otomatis ter-deploy ulang tanpa setup
 tambahan apa pun.
+
+## Ranking otomatis berubah setiap hari
+
+File `vercel.json` sudah berisi **Vercel Cron Job** yang otomatis memanggil
+`/api/cron/refresh-all` setiap hari jam 01:00 UTC (08:00 WIB), menarik ulang
+Views/Like/Comment terbaru untuk SEMUA video sekaligus — jadi ranking
+bergerak sendiri tanpa perlu ada yang klik apa pun.
+
+Cron ini otomatis aktif begitu project di-deploy ke Vercel, tidak perlu
+setup tambahan — asal environment variable `CRON_SECRET` sudah diisi di
+langkah 4. Kalau butuh jadwal lebih sering dari sekali sehari, paket Vercel
+gratis (Hobby) membatasi cron maksimal 1x/hari; jadwal lebih rapat butuh
+paket Pro.
 
 ## Catatan
 - Skor ranking = `views + likes + comments` (shares tidak dihitung karena

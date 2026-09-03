@@ -1,8 +1,14 @@
 import { db } from "@/lib/db";
+import { isAdminRequest } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 // POST /api/import-entities  { tipe: 'kabkota', names: ["Bawaslu Kab. Malang", ...] }
+// Hanya admin.
 export async function POST(request) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: "Hanya admin yang bisa mengimpor data" }, { status: 403 });
+  }
+
   const { tipe, names } = await request.json();
 
   if (!tipe || !Array.isArray(names) || names.length === 0) {

@@ -7,7 +7,6 @@ const SORT_OPTIONS = [
   { value: "views", label: "Views terbanyak" },
   { value: "comments", label: "Comment terbanyak" },
   { value: "likes", label: "Like terbanyak" },
-  { value: "shares", label: "Shares terbanyak" },
 ];
 
 export default function Dashboard() {
@@ -17,6 +16,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const loadVideos = useCallback(async () => {
     setLoading(true);
@@ -30,12 +31,32 @@ export default function Dashboard() {
     loadVideos();
   }, [loadVideos]);
 
+  useEffect(() => {
+    fetch("/api/admin/check").then((r) => r.json()).then((d) => setIsAdmin(d.isAdmin));
+  }, []);
+
+  const logout = async () => {
+    await fetch("/api/admin/logout", { method: "POST" });
+    setIsAdmin(false);
+  };
+
   return (
     <>
       <div className="header-band">
-        <div className="inner">
-          <h1>Bawaslu Membelajarkan — Vol 2</h1>
-          <p>Ranking video pembelajaran dari Bawaslu Provinsi &amp; Kabupaten/Kota se-Indonesia</p>
+        <div className="inner" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <h1>Bawaslu Membelajarkan — Vol 2</h1>
+            <p>Ranking video pembelajaran dari Bawaslu Provinsi &amp; Kabupaten/Kota se-Indonesia</p>
+          </div>
+          {isAdmin ? (
+            <button className="btn secondary" onClick={logout} style={{ background: "transparent", color: "#fff", borderColor: "#fff" }}>
+              Keluar admin
+            </button>
+          ) : (
+            <button className="link-btn" style={{ color: "#b9c4d1" }} onClick={() => setShowLoginModal(true)}>
+              Login admin
+            </button>
+          )}
         </div>
       </div>
 
@@ -58,20 +79,22 @@ export default function Dashboard() {
               ))}
             </select>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn secondary" onClick={() => setShowImportModal(true)}>
-              Import daftar Bawaslu
-            </button>
-            <button className="btn" onClick={() => setShowAddModal(true)}>
-              + Tambah video
-            </button>
-          </div>
+          {isAdmin && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn secondary" onClick={() => setShowImportModal(true)}>
+                Import daftar Bawaslu
+              </button>
+              <button className="btn" onClick={() => setShowAddModal(true)}>
+                + Tambah video
+              </button>
+            </div>
+          )}
         </div>
 
         {loading ? (
           <div className="empty-state">Memuat data…</div>
         ) : videos.length === 0 ? (
-          <div className="empty-state">Belum ada video untuk kategori ini. Klik &quot;+ Tambah video&quot; untuk mulai.</div>
+          <div className="empty-state">Belum ada video untuk kategori ini.</div>
         ) : (
           <table className="rank-table">
             <thead>
@@ -82,12 +105,11 @@ export default function Dashboard() {
                 <th className="num">Views</th>
                 <th className="num">Comment</th>
                 <th className="num">Like</th>
-                <th className="num">Shares</th>
               </tr>
             </thead>
             <tbody>
               {videos.map((v, idx) => (
-                <VideoRow key={v.id} rank={idx + 1} video={v} onChanged={loadVideos} />
+                <VideoRow key={v.id} rank={idx + 1} video={v} isAdmin={isAdmin} onChanged={loadVideos} />
               ))}
             </tbody>
           </table>
@@ -109,25 +131,18 @@ export default function Dashboard() {
           onSaved={() => setShowImportModal(false)}
         />
       )}
+
+      {showLoginModal && (
+        <LoginModal
+          onClose={() => setShowLoginModal(false)}
+          onLoggedIn={() => { setShowLoginModal(false); setIsAdmin(true); }}
+        />
+      )}
     </>
   );
 }
 
-function VideoRow({ rank, video, onChanged }) {
-  const [shares, setShares] = useState(video.shares);
-  const [saving, setSaving] = useState(false);
-
-  const saveShares = async () => {
-    setSaving(true);
-    await fetch(`/api/videos/${video.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shares: Number(shares) || 0 }),
-    });
-    setSaving(false);
-    onChanged();
-  };
-
+function VideoRow({ rank, video, isAdmin, onChanged }) {
   const refresh = async () => {
     await fetch(`/api/videos/${video.id}`, {
       method: "PATCH",
@@ -149,25 +164,58 @@ function VideoRow({ rank, video, onChanged }) {
       <td>{video.nama_entitas}</td>
       <td className="title-cell">
         <a href={video.youtube_url} target="_blank" rel="noreferrer">{video.judul}</a>
-        <div style={{ marginTop: 4, display: "flex", gap: 10 }}>
-          <button className="link-btn" onClick={refresh}>refresh data</button>
-          <button className="link-btn" onClick={hapus}>hapus</button>
-        </div>
+        {isAdmin && (
+          <div style={{ marginTop: 4, display: "flex", gap: 10 }}>
+            <button className="link-btn" onClick={refresh}>refresh data</button>
+            <button className="link-btn" onClick={hapus}>hapus</button>
+          </div>
+        )}
       </td>
       <td className="num">{video.views.toLocaleString("id-ID")}</td>
       <td className="num">{video.comments.toLocaleString("id-ID")}</td>
       <td className="num">{video.likes.toLocaleString("id-ID")}</td>
-      <td className="num">
-        <input
-          type="number"
-          value={shares}
-          onChange={(e) => setShares(e.target.value)}
-          onBlur={saveShares}
-          style={{ width: 70, padding: "4px 6px", textAlign: "right", border: "1px solid #dbe1e8", borderRadius: 3 }}
-          disabled={saving}
-        />
-      </td>
     </tr>
+  );
+}
+
+function LoginModal({ onClose, onLoggedIn }) {
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setErr("");
+    setSaving(true);
+    const res = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    setSaving(false);
+    if (!res.ok) { setErr("Password salah"); return; }
+    onLoggedIn();
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Login Admin</h3>
+        <label>Password</label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+        <div className="err-text">{err}</div>
+        <div className="actions">
+          <button className="btn secondary" onClick={onClose}>Batal</button>
+          <button className="btn" onClick={submit} disabled={saving}>
+            {saving ? "Memeriksa…" : "Masuk"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -175,7 +223,6 @@ function AddVideoModal({ tipe, onClose, onSaved }) {
   const [entities, setEntities] = useState([]);
   const [entityId, setEntityId] = useState("");
   const [url, setUrl] = useState("");
-  const [shares, setShares] = useState(0);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -190,7 +237,7 @@ function AddVideoModal({ tipe, onClose, onSaved }) {
     const res = await fetch("/api/videos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entity_id: Number(entityId), youtube_url: url, shares: Number(shares) || 0 }),
+      body: JSON.stringify({ entity_id: Number(entityId), youtube_url: url }),
     });
     const data = await res.json();
     setSaving(false);
@@ -211,9 +258,6 @@ function AddVideoModal({ tipe, onClose, onSaved }) {
 
         <label>Link YouTube</label>
         <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." />
-
-        <label>Jumlah shares (manual)</label>
-        <input type="number" value={shares} onChange={(e) => setShares(e.target.value)} />
 
         <div className="err-text">{err}</div>
 
