@@ -9,6 +9,15 @@ const SORT_OPTIONS = [
   { value: "likes", label: "Like terbanyak" },
 ];
 
+function getToken() {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("admin_token") || "";
+}
+
+function authHeaders() {
+  return { Authorization: `Bearer ${getToken()}` };
+}
+
 export default function Dashboard() {
   const [tipe, setTipe] = useState("provinsi");
   const [sort, setSort] = useState("skor");
@@ -32,11 +41,15 @@ export default function Dashboard() {
   }, [loadVideos]);
 
   useEffect(() => {
-    fetch("/api/admin/check").then((r) => r.json()).then((d) => setIsAdmin(d.isAdmin));
+    const token = getToken();
+    if (!token) return;
+    fetch("/api/admin/check", { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => setIsAdmin(d.isAdmin));
   }, []);
 
-  const logout = async () => {
-    await fetch("/api/admin/logout", { method: "POST" });
+  const logout = () => {
+    localStorage.removeItem("admin_token");
     setIsAdmin(false);
   };
 
@@ -146,7 +159,7 @@ function VideoRow({ rank, video, isAdmin, onChanged }) {
   const refresh = async () => {
     const res = await fetch(`/api/videos/${video.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ refresh: true }),
     });
     if (!res.ok) {
@@ -159,7 +172,10 @@ function VideoRow({ rank, video, isAdmin, onChanged }) {
 
   const hapus = async () => {
     if (!confirm("Hapus video ini?")) return;
-    const res = await fetch(`/api/videos/${video.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/videos/${video.id}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       alert(data.error || "Gagal menghapus. Coba login admin ulang.");
@@ -201,8 +217,10 @@ function LoginModal({ onClose, onLoggedIn }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password }),
     });
+    const data = await res.json();
     setSaving(false);
     if (!res.ok) { setErr("Password salah"); return; }
+    localStorage.setItem("admin_token", data.token);
     onLoggedIn();
   };
 
@@ -239,20 +257,17 @@ function AddVideoModal({ tipe, onClose, onSaved }) {
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Ambil daftar provinsi untuk filter (hanya relevan kalau tipe = kabkota)
   useEffect(() => {
     if (tipe === "kabkota") {
       fetch("/api/provinsi-list").then((r) => r.json()).then((d) => setProvinsiList(d.provinsi || []));
     }
   }, [tipe]);
 
-  // Ambil daftar entitas sesuai filter provinsi + kata kunci pencarian
   useEffect(() => {
     const params = new URLSearchParams({ tipe });
     if (tipe === "kabkota" && provinsiFilter) params.set("provinsi", provinsiFilter);
     if (search) params.set("q", search);
 
-    // Untuk kabkota, jangan tampilkan daftar sebelum provinsi dipilih (menghindari dropdown 514 opsi)
     if (tipe === "kabkota" && !provinsiFilter && !search) {
       setEntities([]);
       return;
@@ -267,7 +282,7 @@ function AddVideoModal({ tipe, onClose, onSaved }) {
     setSaving(true);
     const res = await fetch("/api/videos", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ entity_id: Number(entityId), youtube_url: url }),
     });
     const data = await res.json();
@@ -336,7 +351,7 @@ function ImportEntitiesModal({ tipe, onClose, onSaved }) {
     setSaving(true);
     const res = await fetch("/api/import-entities", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ tipe, names }),
     });
     const data = await res.json();

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 
+// Login sekarang tidak pakai cookie sama sekali — client menyimpan token
+// (password itu sendiri) di localStorage dan mengirimkannya sebagai
+// header Authorization di tiap request admin. Lebih sederhana dan tidak
+// bergantung pada perilaku cookie (secure/SameSite) yang beda-beda antar
+// browser/lingkungan.
 export async function POST(request) {
   const { password } = await request.json();
 
@@ -7,13 +12,5 @@ export async function POST(request) {
     return NextResponse.json({ error: "Password salah" }, { status: 401 });
   }
 
-  const res = NextResponse.json({ success: true });
-  res.cookies.set("admin_session", password, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30 hari
-  });
-  return res;
+  return NextResponse.json({ success: true, token: password });
 }
