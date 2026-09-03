@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "seed": "node --env-file=.env.local scripts/seed.mjs"
+    "seed": "node --env-file=.env.local scripts/seed.mjs",
+    "seed-topik": "node --env-file=.env.local scripts/seed-topik.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",

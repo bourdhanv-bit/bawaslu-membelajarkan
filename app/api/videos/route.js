@@ -5,30 +5,40 @@ import { extractYoutubeId, fetchYoutubeStats } from "@/lib/youtube";
 import { isAdminRequest } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-// GET /api/videos?tipe=provinsi|kabkota&sort=skor|views|likes|comments
-// Publik: siapa saja boleh melihat ranking.
+// GET /api/videos?tipe=provinsi|kabkota&sort=skor|views|likes|comments&topik_id=5&provinsi=Jawa+Timur
 export async function GET(request) {
   const params = new URL(request.url).searchParams;
   const tipe = params.get("tipe") || "provinsi";
   const sort = params.get("sort") || "skor";
+  const topikId = params.get("topik_id");
+  const provinsi = params.get("provinsi");
 
   const validSort = ["skor", "views", "likes", "comments"];
   const sortCol = validSort.includes(sort) ? sort : "skor";
 
-  const { rows } = await db.execute({
-    sql: `
-      SELECT
-        v.id, v.youtube_url, v.judul, v.views, v.likes, v.comments,
-        (v.views + v.likes + v.comments) AS skor,
-        e.nama AS nama_entitas
-      FROM videos v
-      JOIN bawaslu_entities e ON e.id = v.entity_id
-      WHERE e.tipe = ?
-      ORDER BY ${sortCol === "skor" ? "skor" : sortCol} DESC
-    `,
-    args: [tipe],
-  });
+  let sql = `
+    SELECT
+      v.id, v.youtube_url, v.judul, v.views, v.likes, v.comments,
+      (v.views + v.likes + v.comments) AS skor,
+      e.nama AS nama_entitas
+    FROM videos v
+    JOIN bawaslu_entities e ON e.id = v.entity_id
+    WHERE e.tipe = ?
+  `;
+  const args = [tipe];
 
+  if (topikId) {
+    sql += ` AND e.topik_id = ?`;
+    args.push(Number(topikId));
+  }
+  if (provinsi) {
+    sql += ` AND e.provinsi_nama = ?`;
+    args.push(provinsi);
+  }
+
+  sql += ` ORDER BY ${sortCol === "skor" ? "skor" : sortCol} DESC`;
+
+  const { rows } = await db.execute({ sql, args });
   return NextResponse.json({ videos: rows });
 }
 

@@ -2,7 +2,15 @@ CREATE TABLE IF NOT EXISTS bawaslu_entities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   tipe TEXT NOT NULL CHECK (tipe IN ('provinsi', 'kabkota')),
   nama TEXT NOT NULL UNIQUE,
-  provinsi_nama TEXT   -- hanya diisi untuk tipe 'kabkota', dipakai untuk filter
+  provinsi_nama TEXT,  -- hanya diisi untuk tipe 'kabkota', dipakai untuk filter
+  topik_id INTEGER REFERENCES topik(id)
+);
+
+CREATE TABLE IF NOT EXISTS topik (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  jenis TEXT NOT NULL CHECK (jenis IN ('provinsi', 'kabkota')),
+  klaster TEXT NOT NULL,
+  nama_topik TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS videos (
